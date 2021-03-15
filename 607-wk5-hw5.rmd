@@ -1,0 +1,122 @@
+---
+title: "607-wk6-project2-NZbizdata"
+author: "Tyler Frankenberg"
+date: "3/14/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+
+```
+
+## Introduction
+
+This data comes from a biennial survey of New Zealand businesses, on what percentage of their activity is conducted via the internet.
+
+It is available from: <http://infoshare.stats.govt.nz/ViewTable.aspx?pxID=12482052-c8dd-47f1-9a2e-36fb3851b3fd>.
+
+## Import Data
+
+We start by importing the original table from its .csv file.  We include null value handling for blank values as well as for the ".." in non-survey years.
+
+We have quite a mess on our hands...
+
+```{r import}
+
+nzbizdata_raw <- as_tibble(read_csv("https://raw.githubusercontent.com/curdferguson/607-wk5-hw5/master/nzbizdata.csv", col_names = FALSE, na=c("", "..")))
+
+nzbizdata_raw
+
+```
+
+## Remove non-survey years
+
+It's immediately clear this is a biennial survey taking place only in even-numbered years, so We'll start by removing rows that correspond to non-survey years.
+
+```{r drop-rows}
+
+nzbizdata_raw <- nzbizdata_raw %>% filter(is.na(`X2`) == FALSE)
+
+nzbizdata_raw
+
+``` 
+
+## Transpose the tibble
+
+There are two variables, which we'll call "Business Size" and "Percentage", stored in rows 1-2.
+
+Rather than try to pivot_longer with multiple variables, we'll simplify the process by transposing the table, and then pivoting on a single variable, "Years".
+
+```{r transpose}
+
+# Transpose rows and columns
+nzbizdata_transpose <- t(nzbizdata_raw)
+
+nzbizdata_transpose
+
+``` 
+## Clean up our transposed data
+
+This transposed matrix is a structure we'll be able to pivot much easier, after a little clean up...
+
+```{r re-tibble}
+
+# Fill in missing column headers in row 1, and make these the column headers
+nzbizdata_transpose[1, c(1:2)] <- c("Business Size", "Percentage")
+colnames(nzbizdata_transpose) <- nzbizdata_transpose[1,]
+
+# Convert the data back to a tibble and drop the now-rendundant "header" row
+nzbizdata_transpose <- as_tibble(nzbizdata_transpose)
+nzbizdata <- nzbizdata_transpose %>% slice(2:25)
+
+# Convert numerical columns to data type "int"
+nzbizdata[, c(3:8)] <- nzbizdata[, c(3:8)] %>% type.convert()
+
+nzbizdata
+
+``` 
+
+# Get Values for Business Size
+
+This tibble will be much better for pivoting.  However, we still have missing values to take care of in our "Business Size" variable.
+
+```{r biz_size}
+
+# Create a vector of the unique values for "Business Size"
+biz_size <- as.vector(nzbizdata$`Business Size`)
+biz_size <- unique(biz_size[!is.na(biz_size)])
+
+# Replace NA values with the appropriate value
+nzbizdata[c(2:6), 1] <- biz_size[[1]]
+nzbizdata[c(8:12), 1] <- biz_size[[2]]
+nzbizdata[c(14:18), 1] <- biz_size[[3]]
+nzbizdata[c(20:24), 1] <- biz_size[[4]]
+
+# Convert "Business Size" to factor format so we can sort it appropriately
+nzbizdata$`Business Size` <- nzbizdata$`Business Size` %>% factor(levels = biz_size)
+
+nzbizdata
+
+```
+## Pivot
+
+What we're working with now is an easy pivot to a "long" format, using pivot_longer:
+
+```{r pivot}
+
+# Create a vector for years
+years <- colnames(nzbizdata[, c(3:8)])
+
+# Pivot the data and sort by year
+nzbizdata_long <- nzbizdata %>% 
+  pivot_longer(years, names_to="Year", values_to="Count") %>%
+  arrange(`Year`, `Business Size`)
+
+nzbizdata_long
+
+```
+
+
